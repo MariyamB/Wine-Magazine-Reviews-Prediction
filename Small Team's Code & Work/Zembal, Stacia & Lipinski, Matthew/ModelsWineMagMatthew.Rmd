@@ -1,0 +1,327 @@
+---
+title: "Predicting Red & White - Matthew Lipinski"
+output: html_notebook
+---
+Import cleaned dataset "WineMag"
+```{r}
+library(readr)
+WineMag <- read_csv("~/Documents/SEIS 734-01 Data Mining & Predictive Analytics/Project/DataMiningProject/WineMag.csv")
+View(WineMag)
+```
+Install rpart and dplyr for decision tree and to create aggregations of new columns.
+```{r}
+install.packages("rpart")
+library(rpart)
+library(rpart.plot)
+install.packages("dplyr")
+library(dplyr)
+install.packages("party")
+library(partykit)
+```
+Factoring variables for certain models.
+```{r}
+WMDT <- data.frame(country = as.factor(c(WineMag$Country)),
+                   continent = as.factor(c(Continents$Cdf)),
+                   description = as.factor(c(WineMag$Description)),
+                   designation = as.factor(c(WineMag$Designation)),
+                   points = as.factor(c(WineMag$Points)),
+                   price = as.factor(c(WineMag$Price)),
+                   province = as.factor(c(WineMag$Province)),
+                   region_1 = as.factor(c(WineMag$Region_1)),
+                   region_2 = as.factor(c(WineMag$Region_2)),
+                   variety = as.factor(c(WineMag$Variety)),
+                   winery = as.factor(c(WineMag$Winery)),
+                   redness = as.numeric(c(WnMg2$Redness)),
+                   whiteness = as.numeric(c(WnMg2$Whiteness)),
+                   cluster = as.factor(c(WnMg2$Cluster)),
+                   newPrice = as.factor(c(WMDT14$newPrice)),
+                   newPoints = as.factor(c(WMDT13$newPoints)),
+                   newRegion = as.factor(c(Regions$Regiondf))
+                   )
+```
+Remove rows without a red or white score.
+```{r}
+WMDT2.1 <- WMDT[!rowSums(WMDT[, c(12,13)]) == 0, ]
+```
+Create a dataset WMDT with points binned in 4 groups that now includes 13 attributes.
+```{r}
+WMDT13 <- mutate(WMDT, newPoints = ifelse(points %in% 80:84, "80-84",
+                                     ifelse(points %in% 85:89, "85-89",
+                                     ifelse(points %in% 90:94, "90-94",
+                                     ifelse(points %in% 95:100, "95-100", "Other")))))
+```
+Create new dataframe with numeric and factors.
+```{r}
+WMDT22 <- data.frame(clusters = as.factor(clusters2$Cluster),
+                     region = as.factor(Regions$Regiondf),
+                     points = as.numeric(as.character(WMDT$points)),
+                     price = as.numeric(as.character(WMDT$price))
+                     )
+```
+Change clusters from 1 and 2 to Red and White.
+```{r}
+WMDT22 <- data.frame(clusters = as.numeric(clusters2$Cluster),
+                     region = as.factor(Regions$Regiondf),
+                     points = as.numeric(as.character(WMDT$points)),
+                     price = as.numeric(as.character(WMDT$price))
+                     )
+WMDT22$clusters[WMDT22$clusters == "1"] <- "Red"
+WMDT22$clusters[WMDT22$clusters == "2"] <- "White"
+summary(WMDT22)
+
+```
+Install packages necessary for decision tree and training and test datasets.
+```{r}
+install.packages("caret")
+library(caret)
+install.packages("ROCR")
+library(ROCR)
+```
+Create train and test datasets.
+```{r}
+samp_size <- floor(0.7 *nrow(WMDT22))
+set.seed(2015)
+train_ind <- sample(seq_len(nrow(WMDT22)), size = samp_size)
+
+train <- WMDT22[train_ind, ]
+test <- WMDT22[-train_ind, ]
+```
+Edit controls in rpart tuning and run decsion tree on training.
+```{r}
+start.time <- Sys.time()
+ttt <- rpart.control(1000, cp = 0.005)
+train22 <- rpart(clusters ~ price + points, method = "class", data = train, control = ttt )
+time.taken <- Sys.time() - start.time
+cat("Duration", time.taken, " seconds")
+```
+Review rpart on train.
+```{r}
+printcp(train22)
+plotcp(train22)
+rpart.plot(train22, uniform = TRUE, main = "Decision Tree (Red & White Top 10)")
+```
+Decision tree on test and provide the accuracy score.
+```{r}
+test22 <- predict(train22, test)
+conf.matrix22 <- table(predict(train22, test, type = "class"), test$clusters)
+rownames(conf.matrix22) <- paste("Actual", rownames(conf.matrix22), sep = ": ")
+colnames(conf.matrix22) <- paste("Predicted", colnames(conf.matrix22), sep = ": ")
+conf.matrix22
+plot(conf.matrix22, main = "Prediction Plot (Fruity in White Category)")
+TPTN <- conf.matrix22[1,1] + conf.matrix22[2,2]
+TotalSum <- (conf.matrix22[1,1] + conf.matrix22[1,2] + conf.matrix22[2,1] + conf.matrix22[2,2])
+Accuracy1 <- TPTN / TotalSum
+Accuracy1
+```
+***************************************************************************************************************
+
+Check to see if Random Forest model does better job of predicting red and white wines.
+
+Install Random Forest package and library.
+```{r}
+install.packages("randomForest")
+library(randomForest)
+```
+Run random forest on training dataset.
+```{r}
+start.time <- Sys.time()
+fitRF <- randomForest(as.factor(clusters) ~ price + points,
+                      data = train,
+                      importance = TRUE,
+                      ntree = 2000)
+time.taken <- Sys.time() - start.time
+cat("Duration", time.taken, " seconds")
+```
+Review the significance of the chosen predictors.
+```{r}
+varImpPlot(fitRF)
+```
+Run the Random Forest on the test dataset, review the results, confusion matrix, and accuracy.
+```{r}
+RFresults <- predict(fitRF, test)
+conf.matrixRF <- table(predict(fitRF, test, type = "class"), test$clusters)
+rownames(conf.matrixRF) <- paste("Actual", rownames(conf.matrixRF), sep = ": ")
+colnames(conf.matrixRF) <- paste("Predicted", colnames(conf.matrixRF), sep = ": ")
+conf.matrixRF
+plot(conf.matrixRF, main = "Prediction Plot (Fruity in White Category)")
+
+test22 <- predict(train22, test)
+conf.matrix22 <- table(predict(train22, test, type = "class"), test$clusters)
+rownames(conf.matrix22) <- paste("Actual", rownames(conf.matrix22), sep = ": ")
+colnames(conf.matrix22) <- paste("Predicted", colnames(conf.matrix22), sep = ": ")
+conf.matrix22
+plot(conf.matrix22, main = "Prediction Plot (Fruity in White Category)")
+```
+***************************************************************************************************************
+
+Since random forest didn't produce better results, let's see if Naive Bayes can improve things.
+
+Naive Bayes
+```{r}
+install.packages("naivebayes")
+library(naivebayes)
+```
+Test Naive Bayes
+```{r}
+NB <- naive_bayes(clusters ~ points + price + region, data = train)
+predictNB <- predict(NB, test)
+CMNB <- table(predictNB <- predict(NB, test, type = "class"), test$clusters)
+plot(NB)
+CMNB
+TPTNnb <- CMNB[1,1] + CMNB[2,2]
+TotalSumnb <- (CMNB[1,1] + CMNB[1,2] + CMNB[2,1] + CMNB[2,2])
+Accuracynb <- TPTNnb / TotalSumnb
+Accuracynb
+```
+***************************************************************************************************************
+Take 2
+
+Our choice of Red and White words are subjective and seeing if we change the words that are in each group, we can see if this is truly the reason our first model is so inconsistent.
+
+Create new dataframe with numeric and factors.
+```{r}
+WMDT33 <- data.frame(clusters = as.factor(clusters2T2$Cluster),
+                     region = as.factor(Regions$Regiondf),
+                     points = as.numeric(as.character(WMDT$points)),
+                     price = as.numeric(as.character(WMDT$price))
+                     )
+```
+Change clusters from 1 and 2 to Red and White.
+```{r}
+WMDT33 <- data.frame(clusters = as.numeric(clusters2T2$Cluster),
+                     region = as.factor(Regions$Regiondf),
+                     points = as.numeric(as.character(WMDT$points)),
+                     price = as.numeric(as.character(WMDT$price))
+                     )
+WMDT33$clusters[WMDT33$clusters == "1"] <- "Red"
+WMDT33$clusters[WMDT33$clusters == "2"] <- "White"
+```
+Create train and test datasets.
+```{r}
+samp_sizeT2 <- floor(0.7 *nrow(WMDT33))
+set.seed(2015)
+train_ind <- sample(seq_len(nrow(WMDT33)), size = samp_sizeT2)
+
+trainT2 <- WMDT33[train_ind, ]
+testT2 <- WMDT33[-train_ind, ]
+```
+Decsion tree on training.
+```{r}
+start.time <- Sys.time()
+train33 <- rpart(clusters ~ price + points, method = "class", data = trainT2)
+time.taken <- Sys.time() - start.time
+cat("Duration", time.taken, " seconds")
+```
+Review rpart on train.
+```{r}
+printcp(train33)
+plotcp(train33)
+rpart.plot(train33, uniform = TRUE, main = "Decision Tree (Remove Fruity from White, add Cabernet to Red)")
+```
+Decision tree on test.
+```{r}
+test33 <- predict(train33, testT2)
+conf.matrix33 <- table(predict(train33, testT2, type = "class"), testT2$clusters)
+rownames(conf.matrix33) <- paste("Actual", rownames(conf.matrix33), sep = ": ")
+colnames(conf.matrix33) <- paste("Predicted", colnames(conf.matrix33), sep = ": ")
+conf.matrix33
+plot(conf.matrix33, main = "Prediction Plot (Remove Fruity from White, add Cabernet to Red)")
+TPTNnb33 <- conf.matrix33[1,1] + conf.matrix33[2,2]
+TotalSumnb33 <- (conf.matrix33[1,1] + conf.matrix33[1,2] + conf.matrix33[2,1] + conf.matrix33[2,2])
+Accuracynb33 <- TPTNnb33 / TotalSumnb33
+Accuracynb33
+```
+
+With a better accuracy of 66%, we can now believe that the root of our first models' predictions is due to the scoring method we implored and need a more concerted effort to improve this scoring on red and white words.
+
+***************************************************************************************************************
+
+Additional code that we ended up not utilizing for our project, but keeping as there is some useful code and concepts.
+
+Decsion tree.
+```{r}
+start.time <- Sys.time()
+fit22 <- rpart(clusters ~ price + points, method = "class", data = WMDT22)
+time.taken <- Sys.time() - start.time
+cat("Duration", time.taken, " seconds")
+```
+Review rpart.
+```{r}
+printcp(fit22)
+plotcp(fit22)
+rpart.plot(fit22, uniform = TRUE)
+```
+Binning of prices.
+```{r}
+WMDT14 <- mutate(WMDT13, newPrice = ifelse(price %in% 0:24, "0 - 24",
+                                    ifelse(price %in% 25:49, "25-49",
+                                    ifelse(price %in% 50:74, "50-74",
+                                    ifelse(price %in% 75:99, "75-99",
+                                    ifelse(price %in% 100:124, "100-124",
+                                    ifelse(price %in% 125:149, "125-149",
+                                    ifelse(price %in% 150:174, "150-174",
+                                    ifelse(price %in% 175:199, "175-199",
+                                    ifelse(price %in% 200:249, "200-249",
+                                    ifelse(price %in% 250:299, "250-299",
+                                    ifelse(price %in% 300:399, "300-399",         
+                                    ifelse(price %in% 400:499, "400-499",
+                                    ifelse(price %in% 500:999, "500-999",
+                                    ifelse(price %in% 1000:1999, "1,000-1,999",
+                                    ifelse(price %in% 2000:2500, "2,000-2,500",
+                                           "Other"))))))))))))))))
+```
+Use Continent and newPoints as predictors, use Cluster as target.
+```{r}
+DTdf <- cbind.data.frame(WMDT2.1$newRegion, WMDT2.1$newPrice, WMDT2.1$newPoints, WMDT2.1$cluster)
+colnames(DTdf) <- c("Regions", "PriceBin", "PointsBin", "Clusters")
+```
+Attempt to create a decision tree using rpart.
+```{r}
+start.time <- Sys.time()
+fit11 <- rpart(Clusters ~ PointsBin, method = "class", data = DTdf)
+time.taken <- Sys.time() - start.time
+cat("Duration", time.taken, " seconds")
+```
+Review rpart.
+```{r}
+printcp(fit11)
+plotcp(fit11)
+rpart.plot(fit11, uniform = TRUE)
+```
+Length of clusters2.
+```{r}
+Vector1 <- as.numeric(as.character(WMDT$points))
+length(Vector1[Vector1 >= 90])
+nrow(clusters2[clusters2$Cluster == 1,] )
+48411/97851
+32287/97851
+```
+Attempt to create a decision tree using party package ctree.
+```{r}
+start.time <- Sys.time()
+fitctree <- ctree(clusters ~ price + region, data = WMDT22)
+time.taken <- Sys.time() - start.time
+cat("Duration", time.taken, " seconds")
+```
+Make a plot.
+```{r}
+ctreeplot <- plot(fitctree)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

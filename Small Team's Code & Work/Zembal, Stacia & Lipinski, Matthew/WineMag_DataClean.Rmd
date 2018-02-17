@@ -1,0 +1,89 @@
+---
+title: "Wine Magzine Project - Data Preprocessing - Matthew Lipinski"
+output: html_notebook
+---
+Import initial dataset for preprocessing.
+```{r}
+library(readr)
+winemag_data_first150k <- read_csv("c:/Users/mlipinsk/Documents/UST/SEIS 734-01 Data Mining & Pred. Analytics/Project/winemag-data_first150k.csv")
+View(winemag_data_first150k)
+```
+Remove the record count column.
+```{r}
+WMDF9 <- winemag_data_first150k[, 2:11]
+```
+Dataframe for duplicates.  Returns 53,081 duplicate values.
+```{r}
+dups <- WMDF9[duplicated(WMDF9), ]
+```
+Remove duplicates.
+```{r}
+WMDF <- WMDF9[!duplicated(WMDF9), ]
+```
+Clean description.
+```{r}
+description2 <- stringi::stri_trans_general(WMDF$description, "latin-ascii")
+```
+New description.
+```{r}
+description3 <- as.data.frame(description2)
+```
+Clean designation.
+```{r}
+designation2 <- stringi::stri_trans_general(WMDF$designation, "latin-ascii")
+```
+New designation.
+```{r}
+designation3 <- as.data.frame(designation2)
+```
+Clean province.
+```{r}
+province2 <- stringi::stri_trans_general(WMDF$province, "latin-ascii")
+```
+New province.
+```{r}
+province3 <- as.data.frame(province2)
+```
+Clean region_1.
+```{r}
+region_1.2 <- stringi::stri_trans_general(WMDF$region_1, "latin-ascii")
+```
+New region_1.
+```{r}
+region_1.3 <- as.data.frame(region_1.2)
+```
+Clean variety.
+```{r}
+variety2 <- stringi::stri_trans_general(WMDF$variety, "latin-ascii")
+```
+New variety.
+```{r}
+variety3 <- as.data.frame(variety2)
+```
+Clean winery.
+```{r}
+winery2 <- stringi::stri_trans_general(WMDF$winery, "latin-ascii")
+```
+New winery.
+```{r}
+winery3 <- as.data.frame(winery2)
+```
+New WineMag dataframe.
+```{r}
+WineMag <- cbind(WMDF$country, description3, designation3, WMDF$points, WMDF$price, province3, region_1.3, WMDF$region_2, variety3, winery3)
+```
+Write CSV file.  Clean dataset now has 97,851 records with 10 attributes.
+```{r}
+write_csv(WineMag, path = "WineMag.csv")
+```
+
+
+
+
+
+
+
+
+
+
+

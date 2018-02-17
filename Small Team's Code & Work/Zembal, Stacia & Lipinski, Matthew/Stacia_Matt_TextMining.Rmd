@@ -1,0 +1,357 @@
+---
+title: "Stacia/Matt Text Mining"
+output: html_notebook
+---
+Load dataset.  "WineMag" is the dataset that produced after preprocessing.
+```{r}
+library(readr)
+WineMag <- read_csv("WineMag.csv")
+```
+Install packages and libraries.
+```{r}
+install.packages("tm")
+library(tm)
+install.packages("ggplot2")
+library(ggplot2)
+install.packages("dplyr")
+library(dplyr)
+install.packages("plyr")
+library(plyr)
+install.packages("tidyr")
+library(tidyr)
+install.packages("corpus")
+library(corpus)
+install.packages("stringr")
+library(stringr)
+install.packages("ngram")
+library(ngram)
+```
+Convert the Description to a corpus.
+```{r}
+DC <- Corpus(VectorSource(WineMag$Description))
+```
+Data preprocessing for Description as a corpus.
+```{r}
+#Convert text to lower case.
+DC <- tm_map(DC, content_transformer(tolower))
+#Remove numbers.
+DC <- tm_map(DC, removeNumbers)
+#Remove punctuation.
+DC <- tm_map(DC, removePunctuation)
+#Remove common English stopwords.
+DC <- tm_map(DC, removeWords, stopwords("english"))
+#Eliminate extra white space.
+DC <- tm_map(DC, stripWhitespace)
+```
+Remove stopwords.
+```{r}
+DC <- tm_map(DC, removeWords, c("wine", "flavors", "drink", "palate", "notes", "now"))
+```
+Take the first 50K rows to find frequent items otherwise machine can't handle entire dataset.
+```{r}
+DC50K <- head(DC, 50000)
+```
+Find the frequent items in the first 50K rows.
+```{r}
+dtm <- TermDocumentMatrix(DC50K)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m), decreasing = TRUE)
+d <- data.frame(word = names(v), freq = v)
+```
+Find the top 100 frequent words.
+```{r}
+Top100 <- head(d, 100)
+Top100
+```
+Create a red category based on words that we associate with red.  This is subjective to what Stacia and I deemed words correlated to red.
+```{r}
+wm_red <- c("cherry", "black", "plum", "berry", "red", "blackberry", "tannins", "blend", "dark", "pepper")
+wmRed <- str_c(wm_red, collapse = "|")
+wmRed
+```
+Create a white category based on words that we associate with white.  This is subjective to what Stacia and I deemed words correlated to white.
+```{r}
+wm_white <- c("ripe", "fresh", "oak", "apple", "white", "peach", "light", "fruity", "bright", "vanilla")
+wmWhite <- str_c(wm_white, collapse = "|")
+wmWhite
+```
+Create dataframes that match on the Red and White groups.
+```{r}
+Has_wmRed <- str_extract_all(WineMag$Description, wmRed)
+Has_wmWhite <- str_extract_all(WineMag$Description, wmWhite)
+```
+Convert the Red and White groups into dataframes.
+```{r}
+Has_wmRed <- plyr::ldply(Has_wmRed, rbind)
+Has_wmWhite <- plyr::ldply(Has_wmWhite, rbind)
+```
+Bind the new dataframes to the initial dataframe "WineMag" and make "nWineMag"
+```{r}
+nWineMag <- cbind(WineMag$Description, WineMag$Variety, Has_wmRed, Has_wmWhite)
+```
+Create a csv.  If already created, this is not necesasry and don't run.
+```{r}
+write_csv(nWineMag, path = "RedWhite.csv")
+```
+In light of time, we aggregated and scored our red and white scoring in Excel and bring back into R.  This task was simply counting the frequency of from the red category and then the white category and assigning a percentage value of the red and white values.
+```{r}
+RedWhite <- read_csv('RedWhite.csv')
+```
+Create new dataset for Kmeans.  Has the columns specified.
+```{r}
+RWWG <- cbind.data.frame(RedWhite$Redness, RedWhite$Whiteness)
+```
+Kmeans with 2 clusters.
+```{r}
+km2 <- kmeans(RWWG, 2, iter.max = 10000)
+summary(km2)
+```
+Create new dataframe with the Description, Variety, Redness, Whiteness, and Cluster columns.
+```{r}
+WnMg2 <- cbind.data.frame(WineMag$Description, WineMag$Variety, RWWG$`RedWhite$Redness`, RWWG$`RedWhite$Whiteness`, km2$cluster)
+colnames(WnMg2) <- c("Description", "Variety", "Redness", "Whiteness", "Cluster")
+```
+Count by variety.
+```{r}
+WnMg.summary2 <- table(WineMag$Variety, km2$cluster)
+colnames(WnMg.summary2) <- c("Red", "White")
+WnMg.summary2
+WnMg.summary2df <- as.data.frame.matrix(WnMg.summary2)
+```
+Kmeans analysis.
+```{r}
+clusters2 <- cbind.data.frame(WnMg2$Redness, WnMg2$Whiteness, WnMg2$Cluster)
+colnames(clusters2) <- c("Redness", "Whiteness", "Cluster")
+summary.data.frame(clusters2)
+```
+Remove clusters that don't have a red or white score.
+```{r}
+clusters2.1 <- clusters2[!rowSums(clusters2[, c(1,2)]) == 0, ]
+```
+
+```{r}
+ggplot(RedWhite, aes(CountRed, CountWhite )) + geom_count()
+xlab("CountRed")
+ylab("CountWhite")
+```
+Create a plot for km2 based on clustering.
+```{r}
+ggplot(clusters2.1, aes(Redness, Whiteness, color = Cluster)) + geom_point() + 
+#scale_y_continuous(labels = percent) + scale_x_continuous(labels = percent) +
+  xlab("Red Factor") + 
+  ylab("White Factor") +
+  ggtitle("Kmeans 2 Clusters")
+```
+
+***************************************************************************************************************
+Take 2 on frequent words to see if the words we chose impact final predictions.
+
+Create a new red category based on words that we associate with red.
+```{r}
+wm_redT2 <- c("cherry", "black", "plum", "berry", "red", "blackberry", "tannins", "cabernet", "dark", "pepper")
+wmRedT2 <- str_c(wm_redT2, collapse = "|")
+wmRedT2
+```
+Create a new white category based on words that we associate with white.
+```{r}
+wm_whiteT2 <- c("ripe", "fresh", "citrus", "apple", "white", "peach", "light", "bright", "vanilla", "green")
+wmWhiteT2 <- str_c(wm_whiteT2, collapse = "|")
+wmWhiteT2
+```
+Create dataframes that match on the Red and White groups.
+```{r}
+Has_wmRedT2 <- str_extract_all(WineMag$Description, wmRedT2)
+Has_wmWhiteT2 <- str_extract_all(WineMag$Description, wmWhiteT2)
+```
+Convert the Red and White groups into dataframes.
+```{r}
+Has_wmRedT2 <- plyr::ldply(Has_wmRedT2, rbind)
+Has_wmWhiteT2 <- plyr::ldply(Has_wmWhiteT2, rbind)
+```
+Bind the new dataframes to the initial dataframe "WineMag" and make "nWineMagT2"
+```{r}
+nWineMagT2 <- cbind(WineMag$Description, WineMag$Variety, Has_wmRedT2, Has_wmWhiteT2)
+```
+Create a csv.  Already created don't run if created already.
+```{r}
+write_csv(nWineMagT2, path = "RedWhiteT2.csv")
+```
+Again, in light of time, we aggregated and scored our red and white scoring in Excel and bring back into R.  This task was simply counting the frequency of from the red category and then the white category and assigning a percentage value of the red and white values.
+```{r}
+RedWhiteT2 <- read_csv('RedWhiteT2.csv')
+```
+Create new dataset for KmeansT2.  Has the columns specified.
+```{r}
+RWWGT2 <- cbind.data.frame(RedWhiteT2$Redness, RedWhiteT2$Whiteness)
+```
+Kmeans with 2 clusters.
+```{r}
+km2T2 <- kmeans(RWWGT2, 2, iter.max = 10000)
+summary(km2T2)
+```
+Create new dataframe with the Description, Variety, Redness, Whiteness, and Cluster columns.
+```{r}
+WnMg2T2 <- cbind.data.frame(WineMag$Description, WineMag$Variety, RWWGT2$`RedWhiteT2$Redness`, RWWGT2$`RedWhiteT2$Whiteness`, km2T2$cluster)
+colnames(WnMg2T2) <- c("Description", "Variety", "Redness", "Whiteness", "Cluster")
+```
+Count by variety.
+```{r}
+WnMg.summary2 <- table(WineMag$Variety, km2$cluster)
+colnames(WnMg.summary2) <- c("Red", "White")
+WnMg.summary2
+WnMg.summary2df <- as.data.frame.matrix(WnMg.summary2)
+```
+Kmeans analysis.
+```{r}
+clusters2T2 <- cbind.data.frame(WnMg2T2$Redness, WnMg2T2$Whiteness, WnMg2T2$Cluster)
+colnames(clusters2T2) <- c("Redness", "Whiteness", "Cluster")
+summary.data.frame(clusters2T2)
+```
+***************************************************************************************************************
+
+This was an investigation to see if utilizing kmeans k=3 would help resolve the voting logic we implored.  However it became more confusing than the initial k=2.
+
+Kmeans with 3 clusters.
+```{r}
+km3 <- kmeans(RWWG, 3, iter.max = 10000)
+summary(km3)
+```
+Create new dataframe with the Description, Variety, Redness, Whiteness, and Cluster columns.
+```{r}
+WnMg3 <- cbind.data.frame(WineMag$Description, WineMag$Variety, RWWG$`RedWhite$Redness`, RWWG$`RedWhite$Whiteness`, km3$cluster)
+colnames(WnMg3) <- c("Description", "Variety", "Redness", "Whiteness", "Cluster")
+```
+Count by variety.
+```{r}
+WnMg.summary3 <- table(WineMag$Variety, km3$cluster)
+colnames(WnMg.summary3) <- c("Middle", "White", "Red")
+WnMg.summary3
+WnMg.summary3df <- as.data.frame.matrix(WnMg.summary3)
+```
+Kmeans analysis.
+```{r}
+clusters3 <- cbind.data.frame(WnMg3$Redness, WnMg3$Whiteness, WnMg3$Cluster)
+colnames(clusters3) <- c("Redness", "Whiteness", "Cluster")
+summary.data.frame(clusters3)
+```
+Create a plot based on clustering.
+```{r}
+ggplot(clusters3, aes(Redness, Whiteness, color = Cluster)) + geom_point() + 
+#scale_y_continuous(labels = percent) + scale_x_continuous(labels = percent) +
+  xlab("Red Factor") + 
+  ylab("White Factor") +
+  ggtitle("Kmeans 3 Clusters")
+```
+***************************************************************************************************************
+
+This was an investigation to see if utilizing kmeans k=5 would help resolve the voting logic we implored.  However it became even more confusing than k=3.
+
+Execute kmeans with 5 clusters (This becomes confusing however).
+```{r}
+km5 <- kmeans(RWWG, 5, iter.max = 10000)
+summary(km5)
+```
+Create new dataframe with cluster columns.
+```{r}
+WnMg5 <- cbind.data.frame(WineMag$Description, WineMag$Variety, RWWG$`RedWhite$Redness`, RWWG$`RedWhite$Whiteness`, km5$cluster)
+colnames(WnMg5) <- c("Description", "Variety", "Redness", "Whiteness", "Cluster")
+```
+Count by variety.
+```{r}
+WnMg.sum5 <- table(WineMag$Variety, kmRWWG$cluster)
+colnames(WnMg.sum3) <- c("Middle", "White", "Red")
+WnMg.sum3
+```
+Kmeans analysis.
+```{r}
+clusters5 <- cbind.data.frame(WnMg5$Redness, WnMg5$Whiteness, WnMg5$Cluster)
+colnames(clusters5) <- c("Redness", "Whiteness", "Cluster")
+summary.data.frame(clusters5)
+```
+Create a plot based on clustering.
+```{r}
+ggplot(clusters5, aes(Redness, Whiteness, color = Cluster)) + geom_point(aes(size = Cluster)) + 
+#scale_y_continuous(labels = percent) + scale_x_continuous(labels = percent) +
+  xlab("Red Factor") + 
+  ylab("White Factor") +
+  ggtitle("Kmeans 5 Clusters")
+```
+***************************************************************************************************************
+
+Because our factors were so terribly high, we attempted to bring in regions and continents as defined by the countrycode package to help aggregate.
+
+Load country package and library.
+```{r}
+install.packages("countrycode")
+library(countrycode)
+```
+Find the continents for the countries.
+```{r}
+Cdf <- countrycode::countrycode(WineMag$Country, origin = "country.name", destination = "continent")
+Continents <- cbind.data.frame(WineMag$Country, Cdf)
+Regiondf <- countrycode::countrycode(WineMag$Country, origin = "country.name", destination = "region")
+Regions <- cbind.data.frame(WineMag$Country, Regiondf)
+```
+Create a table summary of the continents by country.
+```{r}
+ContinentsSummary <- table(WineMag$Country, Cdf)
+ContinentsSummary
+RegionsSummary <- table(WineMag$Country, Regiondf)
+RegionsSummary
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Create a plot of the Redness and Whiteness.
+```{r}
+ggplot(testRW, aes(RedWhite$Redness, RedWhite$Whiteness, color = WineMag$Country)) + geom_point()
+```
+
+
+
+
+Bring in package for minimum spanning tree.  
+```{r}
+install.packages("vegan")
+library(vegan)
+```
+Take a subset of the data.
+```{r}
+RWWG5K <- head(RWWG, 5000)
+```
+Create a minimum spanning tree using the test set.  This killed the session.
+```{r}
+#spantree(RWWG5K, toolong = 0)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
